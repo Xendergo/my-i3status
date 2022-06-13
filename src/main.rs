@@ -16,7 +16,7 @@ fn main() {
 
     let axial_tilt = 23.44 * DEG_TO_RAD;
 
-    let earth_position_angle = (date - winter_solstice).num_days() as f32 / 365.0 * 2.0 * PI;
+    let earth_position_angle = (date - winter_solstice).num_days() as f32 / 365.25 * 2.0 * PI;
 
     println!("{{ \"version\": 1 }}");
 
@@ -25,50 +25,52 @@ fn main() {
     loop {
         let time = Local::now();
 
-        let angle_from_midnight_estimate =
-            Utc::now().time().num_seconds_from_midnight() as f32 / 86400.0 * PI * 2.0;
+        let angle_from_noon_estimate =
+            Utc::now().time().num_seconds_from_midnight() as f32 / 86400.0 * PI * 2.0
+                + PI
+                + longitude;
 
         let mut strings: Vec<String> = vec![];
 
         for i in 0..48 {
             let color;
 
-            let effective_long = longitude + angle_from_midnight_estimate + (i as f32) / 24.0 * PI;
-            let (lat_sin, lat_cos) = latitude.sin_cos();
+            let effective_long = angle_from_noon_estimate + (i as f32) / 24.0 * PI;
 
-            let (axial_shift_sin, axial_shift_cos) =
-                (axial_tilt * (effective_long * lat_cos + earth_position_angle).cos()).sin_cos();
-
-            let x = lat_cos * effective_long.cos();
-            let y = lat_sin;
-
-            let dot = x * axial_shift_cos + y * axial_shift_sin;
+            let dot = (axial_tilt * (earth_position_angle + effective_long).cos() + latitude).cos()
+                * effective_long.cos();
 
             if dot > 0.2 {
-                color = (32, 16, 48)
+                    color = day(dot)
             } else if dot < -0.2 {
-                color = (64, 192, 255)
+                color = night(dot)
             } else if dot < 0.0 {
                 let range = dot * 5.0 + 1.0;
                 let whole_range = dot * 2.5 + 0.5;
 
+                let (_, day_green, day_blue) = day(dot); 
+                let (night_red, night_green, night_blue) = night(dot);
+
                 color = (
-                    ((range * 0.75 + 0.25) * 255.0) as u8,
-                    ((0.75 - whole_range * 0.6875) * 255.0) as u8,
-                    ((1.0 - whole_range * 0.875) * 255.0) as u8,
+                    (lerp(range, night_red, 1.0)),
+                    (lerp(whole_range, night_green, day_green)),
+                    (lerp(whole_range, night_blue, day_blue)),
                 )
             } else {
                 let range = dot * 5.0;
                 let whole_range = dot * 2.5 + 0.5;
 
+                let (day_red, day_green, day_blue) = day(dot); 
+                let (_, night_green, night_blue) = night(dot);
+
                 color = (
-                    (((1.0 - range) * 0.875 + 0.125) * 255.0) as u8,
-                    ((0.75 - whole_range * 0.6875) * 255.0) as u8,
-                    ((1.0 - whole_range * 0.875) * 255.0) as u8,
+                    (lerp(range, 1.0, day_red)),
+                    (lerp(whole_range, night_green, day_green)),
+                    (lerp(whole_range, night_blue, day_blue)),
                 )
             }
 
-            let color_text = format!("#{:02X}{:02X}{:02X}", color.0, color.1, color.2);
+            let color_text = format!("#{:02X}{:02X}{:02X}", (color.0 * 255.0) as u8, (color.1 * 255.0) as u8, (color.2 * 255.0) as u8);
 
             strings.push(format!(
                 "{{\"background\":\"{}\",\"full_text\":\"  \",\"separator\": false,\"separator_block_width\":0}}",
@@ -86,4 +88,16 @@ fn main() {
 
         thread::sleep(std::time::Duration::from_secs(1))
     }
+}
+
+fn day(dot: f32) -> (f32, f32, f32) {
+    (0.25, lerp(dot, 0.38, 0.75), lerp(dot, 0.5, 1.0))
+}
+
+fn night(_dot: f32) -> (f32, f32, f32) {
+    (0.125, 0.0625, 0.1875)
+}
+
+fn lerp(v: f32, a: f32, b: f32) -> f32 {
+    a * (1.0-v) + b * v
 }
