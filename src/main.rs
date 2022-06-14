@@ -1,13 +1,12 @@
 use std::{
-    collections::HashMap,
     f32::consts::PI,
-    fs::{self, File},
+    fs,
     io,
-    sync::{mpsc, Arc, RwLock},
+    sync::{ Arc, RwLock},
     thread,
 };
 
-use chrono::{Date, Datelike, Local, NaiveDate, Timelike, Utc};
+use chrono::{ Datelike, Local, NaiveDate, Timelike, Utc};
 use home::home_dir;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -51,20 +50,27 @@ fn main() {
             continue;
         }
 
-        let click_event = match serde_json::from_str::<ClickEvent>(&click_event_json.trim_start_matches(",")) {
-            Ok(v) => v,
-            Err(e) => continue,
-        };
+        let click_event =
+            match serde_json::from_str::<ClickEvent>(&click_event_json.trim_start_matches(",")) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
 
         if click_event.name == "todo" {
             let mut todos = click_evt_todos.write().unwrap();
 
-            if todos.todos.contains_key(&click_event.instance) {
-                let todo = todos.todos.get_mut(&click_event.instance).unwrap();
+            if click_event.instance.parse::<usize>().unwrap() < todos.todos.len() {
+                let todo = &mut todos.todos[click_event.instance.parse::<usize>().unwrap()];
 
-                match todo.last_completed {
-                    Some(_) => todo.last_completed = None,
-                    None => todo.last_completed = Some(Local::today().naive_local()),
+                if let Some(done_today) = todo.done_today {
+                    if Local::today().naive_local() != done_today {
+                        todo.last_completed = todo.done_today.take();
+                    }
+                }
+
+                match todo.done_today {
+                    Some(_) => todo.done_today = None,
+                    None => todo.done_today = Some(Local::today().naive_local()),
                 }
 
                 write_todos(&todos);
@@ -91,20 +97,22 @@ fn write_todos(todos: &Todos) {
             .expect("Couldn't find home directory")
             .join(".i3")
             .join("todos.json"),
-        serde_json::to_string(todos).expect("Couldn't convert todos to a json string"),
+        serde_json::to_string_pretty(todos).expect("Couldn't convert todos to a json string"),
     )
     .expect("Couldn't write todos.json file");
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Todos {
-    todos: HashMap<String, Todo>,
+    todos: Vec<Todo>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Todo {
+    name: String,
     color: String,
     interval: i64,
+    done_today: Option<NaiveDate>,
     last_completed: Option<NaiveDate>,
 }
 
@@ -117,15 +125,19 @@ struct ClickEvent {
 fn update_bar(todos: &Todos) {
     let mut strings: Vec<String> = vec![];
 
-    for (name, todo) in &todos.todos {
+    for (i, todo) in todos.todos.iter().enumerate() {
         strings.push(json!({
-            "background": match todo.last_completed {
-                Some(last_completed) => if (Local::today().naive_local() - last_completed).num_days() < todo.interval {&todo.color} else {"#404040"},
-                None => "#404040",
+            "background": match todo.done_today {
+                Some(done_today) => if Local::today().naive_local() == done_today {&todo.color} else {"#000000"},
+                None => "#000000",
             },
-            "full_text": format!("  {}  ", name),
+            "border": match todo.last_completed {
+                Some(last_completed) => if (Local::today().naive_local() - last_completed).num_days() < todo.interval {&todo.color} else {"#000000"},
+                None => "#000000",
+            },
+            "full_text": format!("  {}  ", &todo.name),
             "name": "todo",
-            "instance": name,
+            "instance": i.to_string(),
             "separator": false,
         }).to_string());
     }
