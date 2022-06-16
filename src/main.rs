@@ -1,12 +1,11 @@
 use std::{
     f32::consts::PI,
-    fs,
-    io,
-    sync::{ Arc, RwLock},
+    fs, io,
+    sync::{Arc, RwLock},
     thread,
 };
 
-use chrono::{ Datelike, Local, NaiveDate, Timelike, Utc};
+use chrono::{Datelike, Local, NaiveDate, Timelike, Utc};
 use home::home_dir;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -61,12 +60,6 @@ fn main() {
             if click_event.instance.parse::<usize>().unwrap() < todos.todos.len() {
                 let todo = &mut todos.todos[click_event.instance.parse::<usize>().unwrap()];
 
-                if let Some(done_today) = todo.done_today {
-                    if Local::today().naive_local() != done_today {
-                        todo.last_completed = todo.done_today.take();
-                    }
-                }
-
                 match todo.done_today {
                     Some(_) => todo.done_today = None,
                     None => todo.done_today = Some(Local::today().naive_local()),
@@ -80,7 +73,15 @@ fn main() {
     });
 
     loop {
-        let todos = todos.read().unwrap();
+        let mut todos = todos.write().unwrap();
+
+        for todo in &mut todos.todos {
+            if let Some(done_today) = todo.done_today {
+                if Local::today().naive_local() != done_today {
+                    todo.last_completed = todo.done_today.take();
+                }
+            }
+        }
 
         update_bar(&todos);
 
