@@ -21,7 +21,6 @@ fn main() {
             "version": 1,
             "click_events": true
         })
-        .to_string()
     );
 
     println!("[[]");
@@ -46,12 +45,12 @@ fn main() {
     thread::spawn(move || loop {
         let mut click_event_json = String::new();
 
-        if let Err(_) = io::stdin().read_line(&mut click_event_json) {
+        if io::stdin().read_line(&mut click_event_json).is_err() {
             continue;
         }
 
         let click_event =
-            match serde_json::from_str::<ClickEvent>(&click_event_json.trim_start_matches(",")) {
+            match serde_json::from_str::<ClickEvent>(click_event_json.trim_start_matches(',')) {
                 Ok(v) => v,
                 Err(_) => continue,
             };
